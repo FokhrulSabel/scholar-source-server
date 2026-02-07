@@ -6,6 +6,14 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 5000;
 
+//firebase
+const admin = require("firebase-admin");
+const serviceAccount = require("./scholar-source-firebase-adminsdk.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 // middleware
 app.use(cors());
 app.use(express.json());
@@ -31,8 +39,37 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
 
-    const db = client.db("ScholarSourceDB")
+    const db = client.db("ScholarSourceDB");
     const userCollection = db.collection("users");
+
+    // User related API
+    app.post("/users", async (req, res) => {
+      try {
+        const { displayName, email, photoURL, uid } = req.body;
+
+        const exists = await userCollection.findOne({ email });
+
+        if (exists) {
+          return res.send(exists);
+        }
+
+        const user = {
+          displayName,
+          email,
+          photoURL,
+          uid,
+          role: "student",
+          createdAt: new Date(),
+        };
+
+        const result = await userCollection.insertOne(user);
+
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server Error" });
+      }
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
@@ -41,7 +78,7 @@ async function run() {
     );
   } finally {
     // Ensures that the client will close when you finish/error
-    await client.close();
+    // await client.close();
   }
 }
 run().catch(console.dir);
