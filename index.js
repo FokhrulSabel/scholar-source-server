@@ -161,6 +161,27 @@ async function run() {
       }
     });
 
+    // Admin: Update Scholarship
+    app.put("/scholarships/:id", verifyToken, verifyAdmin, async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updatedData = req.body;
+
+        const result = await scholarCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updatedData },
+        );
+
+        res.send({
+          success: true,
+          message: "Scholarship updated",
+          result,
+        });
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+
     app.get("/scholarships", async (req, res) => {
       try {
         const { limit = 6, page = 1, sort, search, email } = req.query;
