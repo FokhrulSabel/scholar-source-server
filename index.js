@@ -142,6 +142,25 @@ async function run() {
       }
     });
 
+    // Public: Get Single Scholarship
+    app.get("/scholarships/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        const scholarship = await scholarCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!scholarship) {
+          return res.status(404).send({ message: "Scholarship not found" });
+        }
+
+        res.send(scholarship);
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+
     app.get("/scholarships", async (req, res) => {
       try {
         const { limit = 6, page = 1, sort, search, email } = req.query;
