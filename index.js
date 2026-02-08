@@ -182,6 +182,29 @@ async function run() {
       }
     });
 
+    // Admin: Delete Scholarship
+    app.delete(
+      "/scholarships/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        try {
+          const id = req.params.id;
+
+          const result = await scholarCollection.deleteOne({
+            _id: new ObjectId(id),
+          });
+
+          res.send({
+            success: true,
+            message: "Scholarship deleted",
+          });
+        } catch (error) {
+          res.status(500).send({ message: error.message });
+        }
+      },
+    );
+
     app.get("/scholarships", async (req, res) => {
       try {
         const { limit = 6, page = 1, sort, search, email } = req.query;
