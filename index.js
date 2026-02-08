@@ -104,41 +104,64 @@ async function run() {
       }
     });
 
+    // Search, Filter, Sort & Pagination
     app.get("/all-scholarships", async (req, res) => {
       try {
         let {
-          limit = 8,
-          sort,
           search = "",
-          subject = "",
           country = "",
+          category = "",
           degree = "",
+          sort = "",
           page = 1,
+          limit = 6,
         } = req.query;
-        limit = parseInt(limit);
+
         page = parseInt(page);
+        limit = parseInt(limit);
+
         const query = {};
-        if (subject) query.subjectCategory = subject;
-        if (country) query.universityCountry = country;
-        if (degree) query.degree = degree;
-        if (search.trim()) {
-          query.$text = { $search: search };
+
+        //Search (case-insensitive)
+        if (search) {
+          query.$or = [
+            { scholarshipName: { $regex: search, $options: "i" } },
+            { universityName: { $regex: search, $options: "i" } },
+            { degree: { $regex: search, $options: "i" } },
+          ];
         }
-        const total = await scholarCollection.countDocuments(query);
-        let cursor = scholarCollection.find(query);
-        if (sort === "top") cursor = cursor.sort({ applicationFees: 1 });
+
+        //Filters
+        if (country) query.universityCountry = country;
+        if (category) query.scholarshipCategory = category;
+        if (degree) query.degree = degree;
+
+        //Sorting
+        let sortQuery = {};
+        if (sort === "fees_asc") sortQuery.applicationFees = 1;
+        if (sort === "fees_desc") sortQuery.applicationFees = -1;
+        if (sort === "date") sortQuery.scholarshipPostDate = -1;
+
         const skip = (page - 1) * limit;
-        cursor = cursor.skip(skip).limit(limit);
-        const scholarships = await cursor.toArray();
-        res.json({
+
+        const total = await scholarCollection.countDocuments(query);
+
+        const scholarships = await scholarCollection
+          .find(query)
+          .sort(sortQuery)
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        res.send({
           total,
           page,
           limit,
           totalPages: Math.ceil(total / limit),
           scholarships,
         });
-      } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+      } catch (error) {
+        res.status(500).send({ message: error.message });
       }
     });
 
