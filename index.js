@@ -165,14 +165,35 @@ async function run() {
       }
     });
 
+    app.get("/scholarships", async (req, res) => {
+      try {
+        const result = await scholarCollection.find().toArray();
+        res.status(200).json({ result });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          message: error.message,
+        });
+      }
+    });
+
     // Public: Get Single Scholarship
     app.get("/scholarships/:id", async (req, res) => {
       try {
         const id = req.params.id;
+        console.log("BACKEND ID:", id);
 
-        const scholarship = await scholarCollection.findOne({
-          _id: new ObjectId(id),
-        });
+        let query;
+
+        if (ObjectId.isValid(id)) {
+          query = {
+            $or: [{ _id: new ObjectId(id) }, { _id: id }],
+          };
+        } else {
+          query = { _id: id };
+        }
+
+        const scholarship = await scholarCollection.findOne(query);
 
         if (!scholarship) {
           return res.status(404).send({ message: "Scholarship not found" });
@@ -185,7 +206,7 @@ async function run() {
     });
 
     // Admin: Update Scholarship
-    app.put("/scholarships/:id", verifyToken, verifyAdmin, async (req, res) => {
+    app.put("/scholarships/:id", async (req, res) => {
       try {
         const id = req.params.id;
         const updatedData = req.body;
@@ -206,65 +227,20 @@ async function run() {
     });
 
     // Admin: Delete Scholarship
-    app.delete(
-      "/scholarships/:id",
-      verifyToken,
-      verifyAdmin,
-      async (req, res) => {
-        try {
-          const id = req.params.id;
-
-          const result = await scholarCollection.deleteOne({
-            _id: new ObjectId(id),
-          });
-
-          res.send({
-            success: true,
-            message: "Scholarship deleted",
-          });
-        } catch (error) {
-          res.status(500).send({ message: error.message });
-        }
-      },
-    );
-
-    app.get("/scholarships", async (req, res) => {
+    app.delete("/scholarships/:id", async (req, res) => {
       try {
-        const { limit = 6, page = 1, sort, search, email } = req.query;
-        let query = {};
+        const id = req.params.id;
 
-        if (email) {
-          query.email = email;
-        }
+        const result = await scholarCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
 
-        if (search) {
-          query.scholarshipName = { $regex: search, $options: "i" };
-        }
-
-        const skip = (parseInt(page) - 1) * parseInt(limit);
-
-        let cursor = scholarCollection.find(query);
-
-        if (sort === "top") {
-          cursor = cursor.sort({ rating: -1 });
-        }
-
-        const scholarships = await cursor
-          .skip(skip)
-          .limit(parseInt(limit))
-          .toArray();
-
-        const totalCount = await scholarCollection.countDocuments(query);
-
-        res.status(200).json({
-          scholarships,
-          totalCount,
+        res.send({
+          success: true,
+          message: "Scholarship deleted",
         });
       } catch (error) {
-        res.status(500).send({
-          success: false,
-          message: error.message,
-        });
+        res.status(500).send({ message: error.message });
       }
     });
 
