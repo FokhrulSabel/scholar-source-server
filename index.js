@@ -489,7 +489,7 @@ async function run() {
 
     // Review related api
     // Add Review
-    app.post("/my-reviews",  async (req, res) => {
+    app.post("/my-reviews", async (req, res) => {
       try {
         const {
           scholarshipId,
@@ -539,6 +539,34 @@ async function run() {
         res.json({ success: true, reviews });
       } catch (err) {
         console.error("/my-reviews GET", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+    // Update Review
+    app.patch("/my-reviews/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!isValidId(id))
+          return res.status(400).json({ message: "Invalid id" });
+        const review = await reviewCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!review)
+          return res.status(404).json({ message: "Review not found" });
+        if (review.userEmail !== req.token_email)
+          return res.status(403).json({ message: "Forbidden" });
+        const { rating, comment } = req.body;
+        const update = {
+          $set: { rating: Number(rating), comment, reviewDate: new Date() },
+        };
+        const result = await reviewCollection.updateOne(
+          { _id: new ObjectId(id) },
+          update,
+        );
+        res.json({ success: true, result });
+      } catch (err) {
+        console.error("PATCH /my-reviews/:id", err);
         res.status(500).json({ message: "Server error" });
       }
     });
