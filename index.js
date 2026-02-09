@@ -571,6 +571,34 @@ async function run() {
       }
     });
 
+    // Delete Review
+    app.delete("/my-reviews/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!isValidId(id))
+          return res.status(400).json({ message: "Invalid id" });
+        const review = await reviewCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!review)
+          return res.status(404).json({ message: "Review not found" });
+        if (
+          review.userEmail !== req.token_email &&
+          (await userCollection.findOne({ email: req.token_email })).role !==
+            "moderator"
+        ) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+        const result = await reviewCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.json({ success: true, result });
+      } catch (err) {
+        console.error("DELETE /my-reviews/:id", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
