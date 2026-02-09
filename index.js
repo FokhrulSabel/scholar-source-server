@@ -299,7 +299,7 @@ async function run() {
       }
     });
 
-    // Payment verify 
+    // Payment verify
     app.get("/payment-verify", async (req, res) => {
       try {
         const sessionId = req.query.session_id;
@@ -394,6 +394,53 @@ async function run() {
       } catch (err) {
         console.error("/payment-verify", err);
         res.status(500).json({ message: "Server error verifying payment" });
+      }
+    });
+
+    // Record failed payment but still save unpaid application
+    app.post("/payment-failed-record", async (req, res) => {
+      try {
+        const {
+          scholarshipId,
+          scholarshipName,
+          universityName,
+          userEmail,
+          userName,
+          amount,
+        } = req.body;
+        if (!userEmail || !scholarshipId)
+          return res
+            .status(400)
+            .json({ message: "userEmail and scholarshipId required" });
+
+        const applicationExist = await applicationCollection.findOne({
+          userEmail,
+          scholarshipId,
+        });
+        if (applicationExist)
+          return res
+            .status(409)
+            .json({ message: "Application already exists" });
+
+        const applicationData = {
+          userEmail,
+          userName,
+          scholarshipId,
+          scholarshipName,
+          universityName,
+          amount,
+          paymentStatus: "unpaid",
+          ApplicationStatus: "pending",
+          appliedAt: new Date(),
+        };
+
+        const result = await applicationCollection.insertOne(applicationData);
+        res
+          .status(201)
+          .json({ success: true, applicationId: result.insertedId });
+      } catch (err) {
+        console.error("/payment-failed-record", err);
+        res.status(500).json({ message: "Server error" });
       }
     });
 
