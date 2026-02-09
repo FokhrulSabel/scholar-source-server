@@ -52,29 +52,22 @@ async function run() {
     // Create register user by default role student
     app.post("/users", async (req, res) => {
       try {
-        const { displayName, email, photoURL, uid } = req.body;
+        const userData = req.body;
+        if (!userData?.email)
+          return res.status(400).json({ message: "Email is required" });
 
-        const exists = await userCollection.findOne({ email });
+        // Ensure unique email (DB unique index recommended)
+        const exist = await userCollection.findOne({ email: userData.email });
+        if (exist)
+          return res.status(409).json({ message: "User already exists" });
 
-        if (exists) {
-          return res.send(exists);
-        }
-
-        const user = {
-          displayName,
-          email,
-          photoURL,
-          uid,
-          role: "student",
-          createdAt: new Date(),
-        };
-
-        const result = await userCollection.insertOne(user);
-
-        res.send(result);
-      } catch (error) {
-        console.error(error);
-        res.status(500).send({ message: "Server Error" });
+        userData.role = userData.role || "student";
+        userData.createdAt = new Date();
+        const result = await userCollection.insertOne(userData);
+        res.status(201).json({ success: true, insertedId: result.insertedId });
+      } catch (err) {
+        console.error("/users POST error:", err.message);
+        res.status(500).json({ message: "Server error" });
       }
     });
 
@@ -87,6 +80,36 @@ async function run() {
         res.status(200).json({ users });
       } catch (err) {
         console.error("/users GET error:", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+    // Update user
+    app.patch("/users/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!isValidId(id))
+          return res.status(400).json({ message: "Invalid id" });
+        const data = req.body;
+        //allow admin to update
+        const target = await userCollection.findOne({ _id: new ObjectId(id) });
+        if (!target) return res.status(404).json({ message: "User not found" });
+
+        if (target.email !== req.token_email) {
+          const tokenUser = await userCollection.findOne({
+            email: req.token_email,
+          });
+          if (!tokenUser || tokenUser.role !== "admin")
+            return res.status(403).json({ message: "Forbidden" });
+        }
+        const update = { $set: data };
+        const result = await userCollection.updateOne(
+          { _id: new ObjectId(id) },
+          update,
+        );
+        res.status(200).json({ success: true, result });
+      } catch (err) {
+        console.error("/users/:id PATCH error:", err);
         res.status(500).json({ message: "Server error" });
       }
     });
