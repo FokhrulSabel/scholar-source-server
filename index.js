@@ -3,6 +3,8 @@ const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_Key);
+
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -42,6 +44,8 @@ async function run() {
     const db = client.db("ScholarSourceDB");
     const userCollection = db.collection("users");
     const scholarCollection = db.collection("scholarships");
+    const paymentCollection = db.collection("payments");
+    const applicationCollection = db.collection("applications");
 
     // User related API
     app.post("/users", async (req, res) => {
@@ -241,6 +245,57 @@ async function run() {
         });
       } catch (error) {
         res.status(500).send({ message: error.message });
+      }
+    });
+
+    // payment api
+
+    //  Create Checkout Session
+    app.post("/create-checkout-session", async (req, res) => {
+      try {
+        const {
+          amount,
+          scholarshipName,
+          universityName,
+          scholarshipId,
+          studentEmail,
+        } = req.body;
+        if (!amount || !studentEmail)
+          return res
+            .status(400)
+            .json({ message: "amount and studentEmail are required" });
+
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: { name: scholarshipName },
+                unit_amount: Math.round(Number(amount) * 100),
+              },
+              quantity: 1,
+            },
+          ],
+
+          mode: "payment",
+          customer_email: studentEmail,
+
+          metadata: {
+            scholarshipId,
+            scholarshipName,
+            universityName,
+          },
+
+          success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${process.env.CLIENT_URL}/payment-failed`,
+        });
+
+        res.send({ url: session.url });
+      } catch (error) {
+        console.log(error);
+        res.status(500).send({ message: "Stripe session error" });
       }
     });
 
