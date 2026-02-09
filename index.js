@@ -616,6 +616,32 @@ async function run() {
       },
     );
 
+    // Update Application status
+    app.patch(
+      "/all-applications/:id",
+      verifyFirebaseToken,
+      verifyModerator,
+      async (req, res) => {
+        try {
+          const id = req.params.id;
+          if (!isValidId(id))
+            return res.status(400).json({ message: "Invalid id" });
+          const { status, feedback } = req.body;
+          const update = {};
+          if (status) update.ApplicationStatus = status;
+          if (feedback) update.feedback = feedback;
+          const result = await applicationCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: update },
+          );
+          res.json({ success: true, result });
+        } catch (err) {
+          console.error("PATCH /all-applications/:id", err);
+          res.status(500).json({ message: "Server error" });
+        }
+      },
+    );
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
