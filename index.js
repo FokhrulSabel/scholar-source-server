@@ -444,6 +444,24 @@ async function run() {
       }
     });
 
+    // My Application Api
+    app.get("/my-applications", async (req, res) => {
+      try {
+        const { userEmail } = req.query;
+        if (!userEmail)
+          return res.status(400).json({ message: "userEmail is required" });
+        if (userEmail !== req.token_email)
+          return res.status(403).json({
+            message: "Forbidden - can only view your own applications",
+          });
+        const apps = await applicationCollection.find({ userEmail }).toArray();
+        res.json({ success: true, applications: apps });
+      } catch (err) {
+        console.error("/my-applications", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
