@@ -113,29 +113,38 @@ async function run() {
         res.status(500).json({ message: "Server error" });
       }
     });
-    
-    // Update role by admin 
-    app.patch(
-      "/users/:id/role",
-      async (req, res) => {
-        try {
-          const id = req.params.id;
-          if (!isValidId(id))
-            return res.status(400).json({ message: "Invalid id" });
-          const { role } = req.body;
-          if (!role)
-            return res.status(400).json({ message: "Role is required" });
-          const result = await userCollection.updateOne(
-            { _id: new ObjectId(id) },
-            { $set: { role } },
-          );
-          res.status(200).json({ success: true, result });
-        } catch (err) {
-          console.error("PATCH /users/:id/role", err);
-          res.status(500).json({ message: "Server error" });
-        }
-      },
-    );
+
+    // Update role by admin
+    app.patch("/users/:id/role", async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!isValidId(id))
+          return res.status(400).json({ message: "Invalid id" });
+        const { role } = req.body;
+        if (!role) return res.status(400).json({ message: "Role is required" });
+        const result = await userCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { role } },
+        );
+        res.status(200).json({ success: true, result });
+      } catch (err) {
+        console.error("PATCH /users/:id/role", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+    // Get role by email
+    app.get("/users/:email/role", async (req, res) => {
+      try {
+        const email = req.params.email;
+        if (!email) return res.status(400).json({ message: "Email required" });
+        const user = await userCollection.findOne({ email });
+        res.status(200).json({ role: user?.role || "student" });
+      } catch (err) {
+        console.error("/users/:email/role", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
 
     // scholarships related api
     // Admin: Add Scholarship API
