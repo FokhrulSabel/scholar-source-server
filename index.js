@@ -146,6 +146,19 @@ async function run() {
       }
     });
 
+    // Get user by email
+    app.get("/users/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+        const user = await userCollection.findOne({ email });
+        if (!user) return res.status(404).json({ message: "User not found" });
+        res.status(200).json({ user });
+      } catch (err) {
+        console.error("/users/:email GET", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
     // scholarships related api
     // Admin: Add Scholarship API
     app.post("/scholarships", async (req, res) => {
