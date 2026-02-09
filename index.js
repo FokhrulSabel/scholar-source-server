@@ -487,6 +487,42 @@ async function run() {
       }
     });
 
+    // Review related api
+    app.post("/my-reviews", verifyFirebaseToken, async (req, res) => {
+      try {
+        const {
+          scholarshipId,
+          scholarshipName,
+          universityName,
+          userName,
+          userEmail,
+          userImage,
+          rating,
+          comment,
+        } = req.body;
+        if (!scholarshipId || !userEmail)
+          return res
+            .status(400)
+            .json({ message: "scholarshipId and userEmail required" });
+        const review = {
+          scholarshipId,
+          scholarshipName,
+          universityName,
+          userName,
+          userEmail,
+          userImage: userImage || null,
+          rating: Number(rating),
+          comment,
+          reviewDate: new Date(),
+        };
+        const result = await reviewCollection.insertOne(review);
+        res.status(201).json({ success: true, insertedId: result.insertedId });
+      } catch (err) {
+        console.error("/my-reviews POST", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
