@@ -46,6 +46,7 @@ async function run() {
     const scholarCollection = db.collection("scholarships");
     const paymentCollection = db.collection("payments");
     const applicationCollection = db.collection("applications");
+    const reviewCollection = db.collection("reviews");
 
     // User related API
     app.post("/users", async (req, res) => {
@@ -76,8 +77,7 @@ async function run() {
       }
     });
 
-    // scholarships releted api
-
+    // scholarships related api
     // Admin: Add Scholarship API
     app.post("/scholarships", async (req, res) => {
       try {
@@ -259,6 +259,8 @@ async function run() {
           universityName,
           scholarshipId,
           studentEmail,
+          userName,
+          applicationId,
         } = req.body;
         if (!amount || !studentEmail)
           return res
@@ -267,35 +269,35 @@ async function run() {
 
         const session = await stripe.checkout.sessions.create({
           payment_method_types: ["card"],
-
           line_items: [
             {
               price_data: {
                 currency: "usd",
-                product_data: { name: scholarshipName },
+                product_data: {
+                  name: scholarshipName || "Scholarship Application",
+                },
                 unit_amount: Math.round(Number(amount) * 100),
               },
               quantity: 1,
             },
           ],
-
           mode: "payment",
           customer_email: studentEmail,
-
           metadata: {
             scholarshipId,
+            applicationId,
             scholarshipName,
             universityName,
+            userName,
           },
-
           success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${process.env.CLIENT_URL}/payment-failed`,
         });
 
-        res.send({ url: session.url });
-      } catch (error) {
-        console.log(error);
-        res.status(500).send({ message: "Stripe session error" });
+        res.json({ url: session.url });
+      } catch (err) {
+        console.error("/create-checkout-session", err);
+        res.status(500).json({ message: "Stripe session error" });
       }
     });
 
@@ -458,6 +460,29 @@ async function run() {
         res.json({ success: true, applications: apps });
       } catch (err) {
         console.error("/my-applications", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+    // Delete application api
+    app.delete("/my-applications/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        if (!isValidId(id))
+          return res.status(400).json({ message: "Invalid id" });
+        const appDoc = await applicationCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!appDoc)
+          return res.status(404).json({ message: "Application not found" });
+        if (appDoc.userEmail !== req.token_email)
+          return res.status(403).json({ message: "Forbidden" });
+        const result = await applicationCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.json({ success: true, result });
+      } catch (err) {
+        console.error("DELETE /my-applications/:id", err);
         res.status(500).json({ message: "Server error" });
       }
     });
