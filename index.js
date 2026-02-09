@@ -599,6 +599,23 @@ async function run() {
       }
     });
 
+    // Applications Api for admin & Moderator
+    // View All Applications
+    app.get(
+      "/all-applications",
+      verifyFirebaseToken,
+      verifyModerator,
+      async (req, res) => {
+        try {
+          const apps = await applicationCollection.find().toArray();
+          res.json({ success: true, applications: apps });
+        } catch (err) {
+          console.error("/all-applications", err);
+          res.status(500).json({ message: "Server error" });
+        }
+      },
+    );
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
