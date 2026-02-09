@@ -488,7 +488,8 @@ async function run() {
     });
 
     // Review related api
-    app.post("/my-reviews", verifyFirebaseToken, async (req, res) => {
+    // Add Review
+    app.post("/my-reviews",  async (req, res) => {
       try {
         const {
           scholarshipId,
@@ -519,6 +520,25 @@ async function run() {
         res.status(201).json({ success: true, insertedId: result.insertedId });
       } catch (err) {
         console.error("/my-reviews POST", err);
+        res.status(500).json({ message: "Server error" });
+      }
+    });
+
+    // Get Reviews
+    app.get("/my-reviews", async (req, res) => {
+      try {
+        const userEmail = req.query.userEmail;
+        if (!userEmail)
+          return res.status(400).json({ message: "userEmail required" });
+        if (userEmail !== req.token_email)
+          return res.status(403).json({ message: "Forbidden" });
+        const reviews = await reviewCollection
+          .find({ userEmail })
+          .sort({ reviewDate: -1 })
+          .toArray();
+        res.json({ success: true, reviews });
+      } catch (err) {
+        console.error("/my-reviews GET", err);
         res.status(500).json({ message: "Server error" });
       }
     });
