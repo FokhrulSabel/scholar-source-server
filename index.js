@@ -49,6 +49,7 @@ async function run() {
     const reviewCollection = db.collection("reviews");
 
     // User related API
+    // Create register user by default role student
     app.post("/users", async (req, res) => {
       try {
         const { displayName, email, photoURL, uid } = req.body;
@@ -74,6 +75,19 @@ async function run() {
       } catch (error) {
         console.error(error);
         res.status(500).send({ message: "Server Error" });
+      }
+    });
+
+    // Get users (admin only)
+    app.get("/users", async (req, res) => {
+      try {
+        const { role = "" } = req.query;
+        const q = role ? { role } : {};
+        const users = await userCollection.find(q).toArray();
+        res.status(200).json({ users });
+      } catch (err) {
+        console.error("/users GET error:", err);
+        res.status(500).json({ message: "Server error" });
       }
     });
 
