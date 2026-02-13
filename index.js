@@ -25,12 +25,12 @@ const verifyFirebaseToken = async (req, res, next) => {
   const headerAuth = req.headers.authorization;
   if (!headerAuth) {
     return res.status(401).send({
-      message: "Unothorized access",
+      message: "Unauthorized access - missing Authorization header",
     });
   }
   const token = headerAuth.split(" ")[1];
   if (!token) {
-    return res.status(403).send("Unothorized access , There are no token.");
+    return res.status(403).send("Unauthorized access - token missing");
   }
   try {
     const verify = await admin.auth().verifyIdToken(token);
@@ -69,6 +69,43 @@ async function run() {
     const paymentCollection = db.collection("payments");
     const applicationCollection = db.collection("applications");
     const reviewCollection = db.collection("reviews");
+
+    // Admin verification
+    const verifyAdmin = async (req, res, next) => {
+      try {
+        const email = req.token_email;
+
+        if (!email) {
+          return res.status(401).json({
+            success: false,
+            message: "Unauthorized - token email missing",
+          });
+        }
+
+        const user = await userCollection.findOne({ email });
+
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: "User not found.",
+          });
+        }
+
+        if (user.role !== "admin") {
+          return res.status(403).json({
+            success: false,
+            message: "Forbidden access. Admin only",
+          });
+        }
+        next();
+      } catch (error) {
+        console.error("verifyAdmin error:", error);
+        res.status(500).json({
+          success: false,
+          message: "Internal server error.",
+        });
+      }
+    };
 
     // User related API
     // Create register user by default role student
