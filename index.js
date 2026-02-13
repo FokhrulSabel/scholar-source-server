@@ -107,6 +107,40 @@ async function run() {
       }
     };
 
+    // Moderator verification
+    const verifyModerator = async (req, res, next) => {
+      try {
+        const email = req.token_email;
+        if (!email) {
+          return res.status(401).json({
+            success: false,
+            message: "Unauthorized - token email missing.",
+          });
+        }
+        const user = await userCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: "User not found.",
+          });
+        }
+        if (user.role !== "moderator") {
+          return res.status(403).json({
+            success: false,
+            message: "Forbidden access - Moderator only",
+          });
+        }
+
+        next();
+      } catch (error) {
+        console.error("verifyModerator error:", error);
+        res.status(500).json({
+          success: false,
+          message: "Internal server error.",
+        });
+      }
+    };
+
     // User related API
     // Create register user by default role student
     app.post("/users", async (req, res) => {
