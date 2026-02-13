@@ -20,6 +20,28 @@ admin.initializeApp({
 app.use(cors());
 app.use(express.json());
 
+// Firebase Middleware
+const verifyFirebaseToken = async (req, res, next) => {
+  const headerAuth = req.headers.authorization;
+  if (!headerAuth) {
+    return res.status(401).send({
+      message: "Unothorized access",
+    });
+  }
+  const token = headerAuth.split(" ")[1];
+  if (!token) {
+    return res.status(403).send("Unothorized access , There are no token.");
+  }
+  try {
+    const verify = await admin.auth().verifyIdToken(token);
+    req.token_email = verify.email;
+    next();
+  } catch (error) {
+    return res.status(401).send({ message: error });
+  }
+};
+
+// Mongodb URL
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@scholarsourcedb.getbzat.mongodb.net/?appName=ScholarSourceDB`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
