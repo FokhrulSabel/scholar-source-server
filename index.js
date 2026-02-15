@@ -17,8 +17,15 @@ admin.initializeApp({
 });
 
 // middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL,
+    credentials: true,
+  }),
+);
 app.use(express.json());
+
+const isValidId = (id) => ObjectId.isValid(id);
 
 // Firebase Middleware
 const verifyFirebaseToken = async (req, res, next) => {
@@ -35,6 +42,7 @@ const verifyFirebaseToken = async (req, res, next) => {
   try {
     const verify = await admin.auth().verifyIdToken(token);
     req.token_email = verify.email;
+    req.token_uid = verify.uid;
     next();
   } catch (error) {
     return res.status(401).send({ message: error });
@@ -149,14 +157,22 @@ async function run() {
         if (!userData?.email)
           return res.status(400).json({ message: "Email is required" });
 
-        const exist = await userCollection.findOne({ email: userData.email });
-        if (exist)
-          return res.status(409).json({ message: "User already exists" });
+        // Upsert: insert if not exists, otherwise do nothing
+        const result = await userCollection.updateOne(
+          { email: userData.email }, // filter
+          {
+            $setOnInsert: {
+              displayName: userData.displayName,
+              email: userData.email,
+              photoURL: userData.photoURL,
+              role: userData.role || "student",
+              createdAt: new Date(),
+            },
+          },
+          { upsert: true }, // create if not exists
+        );
 
-        userData.role = userData.role || "student";
-        userData.createdAt = new Date();
-        const result = await userCollection.insertOne(userData);
-        res.status(201).json({ success: true, insertedId: result.insertedId });
+        res.status(200).json({ success: true, result });
       } catch (err) {
         console.error("/users POST error:", err.message);
         res.status(500).json({ message: "Server error" });
@@ -232,27 +248,43 @@ async function run() {
     );
 
     // Get role by email
-    app.get("/users/:email/role", verifyFirebaseToken, async (req, res) => {
-      try {
-        const email = req.params.email;
-        if (!email) return res.status(400).json({ message: "Email required" });
-        const user = await userCollection.findOne({ email });
-        res.status(200).json({ role: user?.role || "student" });
-      } catch (err) {
-        console.error("/users/:email/role", err);
-        res.status(500).json({ message: "Server error" });
-      }
-    });
+    app.get(
+      "/users/:email/role",
+      verifyFirebaseToken,
+
+      async (req, res) => {
+        try {
+          const email = req.params.email;
+          if (!email)
+            return res.status(400).json({ message: "Email required" });
+          const user = await userCollection.findOne({ email });
+          res.status(200).json({ role: user?.role || "student" });
+        } catch (err) {
+          console.error("/users/:email/role", err);
+          res.status(500).json({ message: "Server error" });
+        }
+      },
+    );
 
     // Get user by email
     app.get("/users/:email", verifyFirebaseToken, async (req, res) => {
       try {
         const email = req.params.email;
+
+        const tokenUser = await userCollection.findOne({
+          email: req.token_email,
+        });
+
+        if (req.token_email !== email && tokenUser.role !== "admin") {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+
         const user = await userCollection.findOne({ email });
+
         if (!user) return res.status(404).json({ message: "User not found" });
-        res.status(200).json({ user });
+
+        res.json({ user });
       } catch (err) {
-        console.error("/users/:email GET", err);
         res.status(500).json({ message: "Server error" });
       }
     });
@@ -278,7 +310,7 @@ async function run() {
             ...scholarship,
             applicationDeadline: new Date(scholarship.applicationDeadline),
             scholarshipPostDate: new Date(),
-            postedUserEmail: req.decoded.email,
+            postedUserEmail: req.token_email,
           };
 
           const result = await scholarCollection.insertOne(newScholarship);
@@ -301,7 +333,7 @@ async function run() {
           country = "",
           category = "",
           degree = "",
-          sort = "",
+          sort = "latest", // default sort
           page = 1,
           limit = 6,
         } = req.query;
@@ -311,7 +343,7 @@ async function run() {
 
         const query = {};
 
-        //Search (case-insensitive)
+        // Search (case-insensitive)
         if (search) {
           query.$or = [
             { scholarshipName: { $regex: search, $options: "i" } },
@@ -320,19 +352,23 @@ async function run() {
           ];
         }
 
-        //Filters
+        // Filters
         if (country) query.universityCountry = country;
         if (category) query.scholarshipCategory = category;
         if (degree) query.degree = degree;
 
-        //Sorting
-        let sortQuery = {};
-        if (sort === "fees_asc") sortQuery.applicationFees = 1;
-        if (sort === "fees_desc") sortQuery.applicationFees = -1;
-        if (sort === "date") sortQuery.scholarshipPostDate = -1;
+        // Sorting mapping (frontend keys)
+        const sortOptions = {
+          latest: { scholarshipPostDate: -1 },
+          deadline: { applicationDeadline: 1 },
+          amount_high: { applicationFees: -1 },
+          amount_low: { applicationFees: 1 },
+        };
 
+        const sortQuery = sortOptions[sort] || { scholarshipPostDate: -1 };
+
+        // Pagination
         const skip = (page - 1) * limit;
-
         const total = await scholarCollection.countDocuments(query);
 
         const scholarships = await scholarCollection
@@ -342,7 +378,7 @@ async function run() {
           .limit(limit)
           .toArray();
 
-        res.send({
+        res.status(200).json({
           total,
           page,
           limit,
@@ -350,7 +386,8 @@ async function run() {
           scholarships,
         });
       } catch (error) {
-        res.status(500).send({ message: error.message });
+        console.error("/all-scholarships error:", error);
+        res.status(500).json({ message: error.message });
       }
     });
 
@@ -545,7 +582,7 @@ async function run() {
     );
 
     // Payment verify
-    app.get("/payment-verify", async (req, res) => {
+    app.get("/payment-verify", verifyFirebaseToken, async (req, res) => {
       try {
         const sessionId = req.query.session_id;
         if (!sessionId)
@@ -570,8 +607,12 @@ async function run() {
 
         // Prevent duplicate processing
         const existing = await paymentCollection.findOne({ transactionId });
-        if (existing)
-          return res.status(409).json({ message: "Payment already processed" });
+        if (existing) {
+          return res.json({
+            success: true,
+            applicationData: existing,
+          });
+        }
 
         const scholarshipId = session.metadata?.scholarshipId;
         const applicationId = session.metadata?.applicationId;
@@ -635,7 +676,10 @@ async function run() {
           createdAt: new Date(),
         });
 
-        res.json({ success: true, applicationId: insertResult.insertedId });
+        res.json({
+          success: true,
+          applicationData,
+        });
       } catch (err) {
         console.error("/payment-verify", err);
         res.status(500).json({ message: "Server error verifying payment" });
