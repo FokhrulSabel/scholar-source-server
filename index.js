@@ -10,19 +10,35 @@ const port = process.env.PORT || 5000;
 
 //firebase
 const admin = require("firebase-admin");
-const serviceAccount = require("./scholar-source-firebase-adminsdk.json");
+
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf8",
+);
+const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
 // middleware
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://scholar-source-123.netlify.app",
+];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL,
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   }),
 );
+
 app.use(express.json());
 
 const isValidId = (id) => ObjectId.isValid(id);
@@ -69,7 +85,7 @@ app.get("/", (req, res) => {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     const db = client.db("ScholarSourceDB");
     const userCollection = db.collection("users");
@@ -963,7 +979,7 @@ async function run() {
     );
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
     );
