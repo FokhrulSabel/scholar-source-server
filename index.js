@@ -880,6 +880,44 @@ async function run() {
       },
     );
 
+    //Analytics
+    app.get(
+      "/analytics",
+      verifyFirebaseToken,
+      verifyAdmin,
+      async (req, res) => {
+        try {
+          const totalUsers = await userCollection.countDocuments();
+          const totalScholarships = await scholarCollection.countDocuments();
+          const totalRevenueResult = await applicationCollection
+            .aggregate([
+              { $match: { paymentStatus: "paid" } },
+              { $group: { _id: null, totalRevenue: { $sum: "$amount" } } },
+            ])
+            .toArray();
+          const totalRevenue = totalRevenueResult[0]?.totalRevenue || 0;
+
+          const perUniversity = await applicationCollection
+            .aggregate([
+              { $group: { _id: "$universityName", count: { $sum: 1 } } },
+              { $project: { university: "$_id", count: 1, _id: 0 } },
+              { $sort: { count: -1 } },
+            ])
+            .toArray();
+
+          res.json({
+            totalUsers,
+            totalScholarships,
+            totalRevenue,
+            data: perUniversity,
+          });
+        } catch (err) {
+          console.error("/analytics", err);
+          res.status(500).json({ message: "Server error" });
+        }
+      },
+    );
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
