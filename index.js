@@ -639,7 +639,10 @@ async function run() {
         const applicationId = session.metadata?.applicationId;
         const scholarshipName = session.metadata?.scholarshipName;
         const universityName = session.metadata?.universityName;
-        const userName = session.metadata?.userName;
+        const userName =
+          session.metadata?.userName ||
+          session.customer_details?.name ||
+          "Student";
 
         // If application already exists, update it
         if (applicationId && isValidId(applicationId)) {
@@ -919,7 +922,7 @@ async function run() {
       },
     );
 
-    // Update Application status
+    // Update Application status 
     app.patch(
       "/all-applications/:id",
       verifyFirebaseToken,
@@ -927,20 +930,51 @@ async function run() {
       async (req, res) => {
         try {
           const id = req.params.id;
-          if (!isValidId(id))
-            return res.status(400).json({ message: "Invalid id" });
+
+          if (!ObjectId.isValid(id)) {
+            return res.status(400).json({
+              success: false,
+              message: "Invalid application id",
+            });
+          }
+
           const { status, feedback } = req.body;
-          const update = {};
-          if (status) update.ApplicationStatus = status;
-          if (feedback) update.feedback = feedback;
+
+          const updateDoc = {};
+
+          // update status
+          if (status !== undefined) {
+            updateDoc.ApplicationStatus = status;
+          }
+
+          // update feedback
+          if (feedback !== undefined) {
+            updateDoc.feedback = feedback;
+          }
+
+          //  VERY IMPORTANT CHECK
+          if (Object.keys(updateDoc).length === 0) {
+            return res.status(400).json({
+              success: false,
+              message: "Nothing to update",
+            });
+          }
+
           const result = await applicationCollection.updateOne(
             { _id: new ObjectId(id) },
-            { $set: update },
+            { $set: updateDoc },
           );
-          res.json({ success: true, result });
+
+          res.json({
+            success: true,
+            modifiedCount: result.modifiedCount,
+          });
         } catch (err) {
-          console.error("PATCH /all-applications/:id", err);
-          res.status(500).json({ message: "Server error" });
+          console.error("PATCH /all-applications/:id ERROR:", err);
+          res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+          });
         }
       },
     );
