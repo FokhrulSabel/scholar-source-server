@@ -21,27 +21,31 @@ admin.initializeApp({
 });
 
 // middleware
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://scholar-source-123.netlify.app",
-];
+// const allowedOrigins = [
+//   "http://localhost:5173",
+//   "https://scholar-source-123.netlify.app",
+// ];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-  }),
-);
+// app.use(
+//   cors({
+//     origin: function (origin, callback) {
+//       if (!origin || allowedOrigins.includes(origin)) {
+//         callback(null, true);
+//       } else {
+//         callback(new Error("Not allowed by CORS"));
+//       }
+//     },
+//     credentials: true,
+//   }),
+// );
 
+// app.use(express.json());
+
+// const isValidId = (id) => ObjectId.isValid(id);
+
+// Middleware
 app.use(express.json());
-
-const isValidId = (id) => ObjectId.isValid(id);
+app.use(cors());
 
 // Firebase Middleware
 const verifyFirebaseToken = async (req, res, next) => {
@@ -51,6 +55,7 @@ const verifyFirebaseToken = async (req, res, next) => {
       message: "Unauthorized access - missing Authorization header",
     });
   }
+  console.log(req.headers.authorization);
   const token = headerAuth.split(" ")[1];
   if (!token) {
     return res.status(403).send("Unauthorized access - token missing");
@@ -598,7 +603,7 @@ async function run() {
     );
 
     // Payment verify
-    app.get("/payment-verify", verifyFirebaseToken, async (req, res) => {
+    app.get("/payment-verify", async (req, res) => {
       try {
         const sessionId = req.query.session_id;
         if (!sessionId)
