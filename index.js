@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const isValidId = (id) => ObjectId.isValid(id);
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_Key);
 
@@ -49,24 +50,35 @@ app.use(cors());
 
 // Firebase Middleware
 const verifyFirebaseToken = async (req, res, next) => {
-  const headerAuth = req.headers.authorization;
-  if (!headerAuth) {
-    return res.status(401).send({
-      message: "Unauthorized access - missing Authorization header",
-    });
-  }
-  console.log(req.headers.authorization);
-  const token = headerAuth.split(" ")[1];
-  if (!token) {
-    return res.status(403).send("Unauthorized access - token missing");
-  }
   try {
-    const verify = await admin.auth().verifyIdToken(token);
-    req.token_email = verify.email;
-    req.token_uid = verify.uid;
+    const headerAuth = req.headers.authorization;
+
+    if (!headerAuth?.startsWith("Bearer ")) {
+      return res.status(401).json({
+        message: "Unauthorized - missing token",
+      });
+    }
+
+    const token = headerAuth.split(" ")[1];
+
+    const decoded = await admin.auth().verifyIdToken(token);
+
+    if (!decoded?.email) {
+      return res.status(401).json({
+        message: "Token email missing",
+      });
+    }
+
+    req.token_email = decoded.email;
+    req.token_uid = decoded.uid;
+
     next();
   } catch (error) {
-    return res.status(401).send({ message: error });
+    console.error("Firebase verify error:", error);
+
+    return res.status(401).json({
+      message: "Invalid or expired token",
+    });
   }
 };
 
@@ -102,36 +114,34 @@ async function run() {
     // Admin verification
     const verifyAdmin = async (req, res, next) => {
       try {
-        const email = req.token_email;
-
-        if (!email) {
+        if (!req.token_email) {
           return res.status(401).json({
-            success: false,
-            message: "Unauthorized - token email missing",
+            message: "Unauthorized user",
           });
         }
 
-        const user = await userCollection.findOne({ email });
+        const user = await userCollection.findOne({
+          email: req.token_email,
+        });
 
         if (!user) {
-          return res.status(404).json({
-            success: false,
-            message: "User not found.",
+          return res.status(401).json({
+            message: "User not found in database",
           });
         }
 
         if (user.role !== "admin") {
           return res.status(403).json({
-            success: false,
-            message: "Forbidden access. Admin only",
+            message: "Admin only access",
           });
         }
+
+        req.admin = user;
         next();
       } catch (error) {
         console.error("verifyAdmin error:", error);
         res.status(500).json({
-          success: false,
-          message: "Internal server error.",
+          message: error.message,
         });
       }
     };
@@ -220,6 +230,12 @@ async function run() {
         if (!isValidId(id))
           return res.status(400).json({ message: "Invalid id" });
         const data = req.body;
+        // prevent role update
+        if (data.role) {
+          return res
+            .status(403)
+            .json({ message: "Role update not allowed here" });
+        }
         //allow admin to update
         const target = await userCollection.findOne({ _id: new ObjectId(id) });
         if (!target) return res.status(404).json({ message: "User not found" });
@@ -265,6 +281,9 @@ async function run() {
           console.error("PATCH /users/:id/role", err);
           res.status(500).json({ message: "Server error" });
         }
+        // console.log("TOKEN EMAIL:", req.token_email);
+        // console.log("ROLE BODY:", req.body);
+        // console.log("USER ID:", req.params.id);
       },
     );
 
@@ -922,7 +941,7 @@ async function run() {
       },
     );
 
-    // Update Application status 
+    // Update Application status
     app.patch(
       "/all-applications/:id",
       verifyFirebaseToken,
