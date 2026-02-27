@@ -433,13 +433,29 @@ async function run() {
 
     app.get("/scholarships", async (req, res) => {
       try {
-        const result = await scholarCollection.find().toArray();
-        res.status(200).json({ result });
-      } catch (error) {
-        res.status(500).json({
-          success: false,
-          message: error.message,
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+
+        const skip = (page - 1) * limit;
+
+        const total = await scholarCollection.countDocuments();
+
+        const scholarships = await scholarCollection
+          .find()
+          .sort({ scholarshipPostDate: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        res.send({
+          success: true,
+          total,
+          currentPage: page,
+          totalPages: Math.ceil(total / limit),
+          result: scholarships,
         });
+      } catch (error) {
+        res.status(500).send({ message: error.message });
       }
     });
 
@@ -1009,29 +1025,54 @@ async function run() {
           const totalScholarships = await scholarCollection.countDocuments();
           const totalRevenueResult = await applicationCollection
             .aggregate([
-              { $match: { paymentStatus: "paid" } },
-              { $group: { _id: null, totalRevenue: { $sum: "$amount" } } },
+              {
+                $match: { paymentStatus: "paid" },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalRevenue: { $sum: "$amount" },
+                },
+              },
             ])
             .toArray();
-          const totalRevenue = totalRevenueResult[0]?.totalRevenue || 0;
+          const totalRevenue =
+            totalRevenueResult.length > 0
+              ? totalRevenueResult[0].totalRevenue
+              : 0;
 
-          const perUniversity = await applicationCollection
+          const Data = await applicationCollection
             .aggregate([
-              { $group: { _id: "$universityName", count: { $sum: 1 } } },
-              { $project: { university: "$_id", count: 1, _id: 0 } },
-              { $sort: { count: -1 } },
+              {
+                $group: {
+                  _id: "$universityName",
+                  count: { $sum: 1 },
+                },
+              },
+              {
+                $project: {
+                  university: "$_id",
+                  count: 1,
+                  _id: 0,
+                },
+              },
+              {
+                $sort: { count: -1 },
+              },
             ])
             .toArray();
 
-          res.json({
+          res.status(200).json({
             totalUsers,
             totalScholarships,
             totalRevenue,
-            data: perUniversity,
+            Data,
           });
-        } catch (err) {
-          console.error("/analytics", err);
-          res.status(500).json({ message: "Server error" });
+        } catch (error) {
+          res.status(500).send({
+            success: false,
+            message: error.message,
+          });
         }
       },
     );
