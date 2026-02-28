@@ -463,7 +463,7 @@ async function run() {
     app.get("/scholarships/:id", async (req, res) => {
       try {
         const id = req.params.id;
-        console.log("BACKEND ID:", id);
+        // console.log("BACKEND ID:", id);
 
         let query;
 
@@ -585,7 +585,7 @@ async function run() {
     //  Create Checkout Session
     app.post(
       "/create-checkout-session",
-      verifyFirebaseToken,
+      // verifyFirebaseToken,
       async (req, res) => {
         try {
           const {
@@ -638,159 +638,166 @@ async function run() {
     );
 
     // Payment verify
-    app.get("/payment-verify", async (req, res) => {
-      try {
-        const sessionId = req.query.session_id;
-        if (!sessionId)
-          return res.status(400).json({ message: "Session ID missing" });
+    app.get(
+      "/payment-verify",
+      async (req, res) => {
+        try {
+          const sessionId = req.query.session_id;
+          if (!sessionId)
+            return res.status(400).json({ message: "Session ID missing" });
 
-        const session = await stripe.checkout.sessions.retrieve(sessionId, {
-          expand: ["line_items.data.price.product"],
-        });
-        if (!session)
-          return res.status(404).json({ message: "Session not found" });
-        if (session.payment_status !== "paid") {
-          return res.status(400).json({
-            success: false,
-            paymentStatus: "unpaid",
-            message: "Payment not completed.",
+          const session = await stripe.checkout.sessions.retrieve(sessionId, {
+            expand: ["line_items.data.price.product"],
           });
-        }
-
-        const transactionId = session.payment_intent;
-        if (!transactionId)
-          return res.status(400).json({ message: "Transaction id missing" });
-
-        // Prevent duplicate processing
-        const existing = await paymentCollection.findOne({ transactionId });
-        if (existing) {
-          return res.json({
-            success: true,
-            applicationData: existing,
-          });
-        }
-
-        const scholarshipId = session.metadata?.scholarshipId;
-        const applicationId = session.metadata?.applicationId;
-        const scholarshipName = session.metadata?.scholarshipName;
-        const universityName = session.metadata?.universityName;
-        const userName =
-          session.metadata?.userName ||
-          session.customer_details?.name ||
-          "Student";
-
-        // If application already exists, update it
-        if (applicationId && isValidId(applicationId)) {
-          const applicationExist = await applicationCollection.findOne({
-            _id: new ObjectId(applicationId),
-          });
-          if (applicationExist) {
-            const updateDoc = {
-              $set: {
-                paymentStatus: "paid",
-                transactionId,
-                paidAt: new Date(),
-              },
-            };
-            await applicationCollection.updateOne(
-              { _id: new ObjectId(applicationId) },
-              updateDoc,
-            );
-            //payment history
-            await paymentCollection.insertOne({
-              transactionId,
-              applicationId: new ObjectId(applicationId),
-              amount: session.amount_total / 100,
-              currency: session.currency,
-              createdAt: new Date(),
-              raw: session,
-            });
-            return res.json({
-              success: true,
-              message: "Application updated successfully",
+          if (!session)
+            return res.status(404).json({ message: "Session not found" });
+          if (session.payment_status !== "paid") {
+            return res.status(400).json({
+              success: false,
+              paymentStatus: "unpaid",
+              message: "Payment not completed.",
             });
           }
+
+          const transactionId = session.payment_intent;
+          if (!transactionId)
+            return res.status(400).json({ message: "Transaction id missing" });
+
+          // Prevent duplicate processing
+          const existing = await paymentCollection.findOne({ transactionId });
+          if (existing) {
+            return res.json({
+              success: true,
+              applicationData: existing,
+            });
+          }
+
+          const scholarshipId = session.metadata?.scholarshipId;
+          const applicationId = session.metadata?.applicationId;
+          const scholarshipName = session.metadata?.scholarshipName;
+          const universityName = session.metadata?.universityName;
+          const userName =
+            session.metadata?.userName ||
+            session.customer_details?.name ||
+            "Student";
+
+          // If application already exists, update it
+          if (applicationId && isValidId(applicationId)) {
+            const applicationExist = await applicationCollection.findOne({
+              _id: new ObjectId(applicationId),
+            });
+            if (applicationExist) {
+              const updateDoc = {
+                $set: {
+                  paymentStatus: "paid",
+                  transactionId,
+                  paidAt: new Date(),
+                },
+              };
+              await applicationCollection.updateOne(
+                { _id: new ObjectId(applicationId) },
+                updateDoc,
+              );
+              //payment history
+              await paymentCollection.insertOne({
+                transactionId,
+                applicationId: new ObjectId(applicationId),
+                amount: session.amount_total / 100,
+                currency: session.currency,
+                createdAt: new Date(),
+                raw: session,
+              });
+              return res.json({
+                success: true,
+                message: "Application updated successfully",
+              });
+            }
+          }
+
+          //create application record with paid status
+          const applicationData = {
+            userEmail:
+              session.customer_details?.email || session.customer_email,
+            userName,
+            scholarshipId,
+            scholarshipName,
+            universityName,
+            transactionId,
+            amount: (session.amount_total || 0) / 100,
+            currency: session.currency || "USD",
+            paymentStatus: "paid",
+            ApplicationStatus: "pending",
+            appliedAt: new Date(),
+            paidAt: new Date(),
+          };
+
+          const insertResult =
+            await applicationCollection.insertOne(applicationData);
+          await paymentCollection.insertOne({
+            ...applicationData,
+            createdAt: new Date(),
+          });
+
+          res.json({
+            success: true,
+            applicationData,
+          });
+        } catch (err) {
+          console.error("/payment-verify", err);
+          res.status(500).json({ message: "Server error verifying payment" });
         }
-
-        //create application record with paid status
-        const applicationData = {
-          userEmail: session.customer_details?.email || session.customer_email,
-          userName,
-          scholarshipId,
-          scholarshipName,
-          universityName,
-          transactionId,
-          amount: (session.amount_total || 0) / 100,
-          currency: session.currency || "USD",
-          paymentStatus: "paid",
-          ApplicationStatus: "pending",
-          appliedAt: new Date(),
-          paidAt: new Date(),
-        };
-
-        const insertResult =
-          await applicationCollection.insertOne(applicationData);
-        await paymentCollection.insertOne({
-          ...applicationData,
-          createdAt: new Date(),
-        });
-
-        res.json({
-          success: true,
-          applicationData,
-        });
-      } catch (err) {
-        console.error("/payment-verify", err);
-        res.status(500).json({ message: "Server error verifying payment" });
-      }
-    });
+      },
+    );
 
     // Record failed payment but still save unpaid application
-    app.post("/payment-failed-record", async (req, res) => {
-      try {
-        const {
-          scholarshipId,
-          scholarshipName,
-          universityName,
-          userEmail,
-          userName,
-          amount,
-        } = req.body;
-        if (!userEmail || !scholarshipId)
-          return res
-            .status(400)
-            .json({ message: "userEmail and scholarshipId required" });
+    app.post(
+      "/payment-failed-record",
+      async (req, res) => {
+        try {
+          const {
+            scholarshipId,
+            scholarshipName,
+            universityName,
+            userEmail,
+            userName,
+            amount,
+          } = req.body;
+          if (!userEmail || !scholarshipId)
+            return res
+              .status(400)
+              .json({ message: "userEmail and scholarshipId required" });
 
-        const applicationExist = await applicationCollection.findOne({
-          userEmail,
-          scholarshipId,
-        });
-        if (applicationExist)
-          return res
-            .status(409)
-            .json({ message: "Application already exists" });
+          const applicationExist = await applicationCollection.findOne({
+            userEmail,
+            scholarshipId,
+          });
+          if (applicationExist)
+            return res
+              .status(409)
+              .json({ message: "Application already exists" });
 
-        const applicationData = {
-          userEmail,
-          userName,
-          scholarshipId,
-          scholarshipName,
-          universityName,
-          amount,
-          paymentStatus: "unpaid",
-          ApplicationStatus: "pending",
-          appliedAt: new Date(),
-        };
+          const applicationData = {
+            userEmail,
+            userName,
+            scholarshipId,
+            scholarshipName,
+            universityName,
+            amount,
+            paymentStatus: "unpaid",
+            ApplicationStatus: "pending",
+            appliedAt: new Date(),
+          };
 
-        const result = await applicationCollection.insertOne(applicationData);
-        res
-          .status(201)
-          .json({ success: true, applicationId: result.insertedId });
-      } catch (err) {
-        console.error("/payment-failed-record", err);
-        res.status(500).json({ message: "Server error" });
-      }
-    });
+          const result = await applicationCollection.insertOne(applicationData);
+          res
+            .status(201)
+            .json({ success: true, applicationId: result.insertedId });
+        } catch (err) {
+          console.error("/payment-failed-record", err);
+          res.status(500).json({ message: "Server error" });
+        }
+      },
+    );
 
     // Review related api
     // Add Review
